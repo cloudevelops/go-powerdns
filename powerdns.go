@@ -6,22 +6,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	//"github.com/davecgh/go-spew/spew"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
-	//"github.com/davecgh/go-spew/spew"
+	"time"
 )
 
 type Powerdns struct {
-	Hostname  string
-	Apikey    string
-	VerifySSL bool
-	BaseURL   string
-	client    *http.Client
+	Hostname    string
+	Apikey      string
+	VerifySSL   bool
+	BaseURL     string
+	NameServers []string
+	client      *http.Client
 }
 
-func NewPowerdns(HostName string, ApiKey string) *Powerdns {
+func NewPowerdns(HostName string, ApiKey string, NameServers []string) *Powerdns {
 	var powerdns *Powerdns
 	var tr *http.Transport
 
@@ -30,7 +32,7 @@ func NewPowerdns(HostName string, ApiKey string) *Powerdns {
 	powerdns.Apikey = ApiKey
 	powerdns.VerifySSL = false
 	powerdns.BaseURL = "http://" + powerdns.Hostname + ":8081/api/v1/servers/localhost/"
-
+	powerdns.NameServers = NameServers
 	if powerdns.VerifySSL {
 		tr = &http.Transport{}
 	} else {
@@ -248,6 +250,53 @@ func (powerdns *Powerdns) UpdateRecord(domain string, dtype string, name string,
 		fmt.Println(err)
 		topDomain = domain
 	}
+	_, err = powerdns.Get("zones/" + domain)
+	if err != nil {
+		fmt.Println("Domain not found, attempting to create it")
+		err := powerdns.CreateDomain(domain)
+		if err != nil {
+			fmt.Println("Failed to create domain:" + domain)
+			return err
+		}
+	}
+	err = powerdns.Patch("zones/"+topDomain, jsonText)
+	if err != nil {
+		fmt.Println("Error updating record")
+		fmt.Println(err)
+		return err
+	}
+	return nil
+}
+
+func (powerdns *Powerdns) UpdateRec(domain string, dtype string, name string, content string, ttl int) error {
+
+	var recordSlice []interface{}
+	var rrSlice []interface{}
+	record := Record{
+		Content:  content,
+		Disabled: false,
+		Name:     name,
+		Ttl:      ttl,
+		DType:    dtype,
+	}
+	recordSlice = append(recordSlice, record)
+	rrSet := RrSet{
+		Name:       name,
+		DType:      dtype,
+		Ttl:        ttl,
+		ChangeType: "REPLACE",
+		Records:    recordSlice,
+	}
+	rrSlice = append(rrSlice, rrSet)
+	update := make(map[string]interface{})
+	update["rrsets"] = rrSlice
+	jsonText, err := json.Marshal(update)
+	topDomain, err := powerdns.GetTopDomain(domain)
+	if err != nil {
+		fmt.Println("Could not get topdomain, reverting to domain")
+		fmt.Println(err)
+		topDomain = domain
+	}
 	err = powerdns.Patch("zones/"+topDomain, jsonText)
 	if err != nil {
 		fmt.Println("Error updating record")
@@ -283,4 +332,117 @@ func (powerdns *Powerdns) GetTopDomain(domain string) (topdomain string, err err
 		}
 	}
 	return topdomain, errors.New("Did not found domain")
+}
+
+func (powerdns *Powerdns) DeleteRecord(domain string, dtype string, name string) error {
+
+	var recordSlice []interface{}
+	var rrSlice []interface{}
+	record := Record{
+		Disabled: false,
+		Name:     name + "." + domain + ".",
+		DType:    dtype,
+	}
+	recordSlice = append(recordSlice, record)
+	rrSet := RrSet{
+		Name:       name + "." + domain + ".",
+		DType:      dtype,
+		ChangeType: "DELETE",
+		Records:    recordSlice,
+	}
+	rrSlice = append(rrSlice, rrSet)
+	update := make(map[string]interface{})
+	update["rrsets"] = rrSlice
+	jsonText, err := json.Marshal(update)
+	topDomain, err := powerdns.GetTopDomain(domain)
+	if err != nil {
+		fmt.Println("Could not get topdomain, reverting to domain")
+		fmt.Println(err)
+		topDomain = domain
+	}
+	err = powerdns.Patch("zones/"+topDomain, jsonText)
+	if err != nil {
+		fmt.Println("Error updating record")
+		fmt.Println(err)
+		return err
+	}
+	return nil
+}
+
+func (powerdns *Powerdns) DeleteRec(domain string, dtype string, name string) error {
+
+	var recordSlice []interface{}
+	var rrSlice []interface{}
+	record := Record{
+		Disabled: false,
+		Name:     name,
+		DType:    dtype,
+	}
+	recordSlice = append(recordSlice, record)
+	rrSet := RrSet{
+		Name:       name,
+		DType:      dtype,
+		ChangeType: "DELETE",
+		Records:    recordSlice,
+	}
+	rrSlice = append(rrSlice, rrSet)
+	update := make(map[string]interface{})
+	update["rrsets"] = rrSlice
+	jsonText, err := json.Marshal(update)
+	topDomain, err := powerdns.GetTopDomain(domain)
+	if err != nil {
+		fmt.Println("Could not get topdomain, reverting to domain")
+		fmt.Println(err)
+		topDomain = domain
+	}
+	err = powerdns.Patch("zones/"+topDomain, jsonText)
+	if err != nil {
+		fmt.Println("Error updating record")
+		fmt.Println(err)
+		return err
+	}
+	return nil
+}
+
+func (powerdns *Powerdns) CreateDomain(domain string) error {
+	// create domain itself
+	type Domain struct {
+		Name        string   `json:"name"`
+		Kind        string   `json:"kind"`
+		Masters     []string `json:"masters"`
+		Nameservers []string `json:"nameservers"`
+	}
+	masters := make([]string, 0)
+	var CanonicalNameServers []string
+	for _, nameserver := range powerdns.NameServers {
+		canonicalNameServer := nameserver + "."
+		CanonicalNameServers = append(CanonicalNameServers, canonicalNameServer)
+	}
+	canonicalDomain := domain + "."
+	domainSet := Domain{
+		Name:        canonicalDomain,
+		Kind:        "Master",
+		Masters:     masters,
+		Nameservers: CanonicalNameServers,
+	}
+
+	jsonText, err := json.Marshal(domainSet)
+
+	_, err = powerdns.Post("zones", jsonText)
+	if err != nil {
+		fmt.Println("Error creating domain: " + domain)
+		fmt.Println(err)
+		return err
+	}
+	// initialize SOA record
+	t := time.Now()
+	timestamp := t.Format("20060102") + "01"
+	soa := CanonicalNameServers[0] + " hostmaster. " + timestamp + " 28800 7200 604800 86400"
+	err = powerdns.UpdateRec(canonicalDomain, "SOA", canonicalDomain, soa, 60)
+	if err != nil {
+		fmt.Println("Failed to update SOA record, domain: " + canonicalDomain + ", name: " + canonicalDomain + ", content: " + soa + " !")
+	}
+	fmt.Println("Updated SOA record, domain: " + canonicalDomain + ", name: " + canonicalDomain + ", content: " + soa + " !")
+
+	return nil
 }
