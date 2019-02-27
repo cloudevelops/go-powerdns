@@ -48,7 +48,7 @@ func (powerdns *Powerdns) Post(endpoint string, jsonData []byte) (map[string]int
 	var target string
 	var data interface{}
 	var req *http.Request
-
+	fmt.Println("PDNS.Post: endpoint: " + endpoint + " ,jsonData:" + string(jsonData))
 	target = powerdns.BaseURL + endpoint
 	req, err := http.NewRequest("POST", target, bytes.NewBuffer(jsonData))
 	req.Header.Add("Content-Type", "application/json")
@@ -85,7 +85,7 @@ func (powerdns *Powerdns) Post(endpoint string, jsonData []byte) (map[string]int
 func (powerdns *Powerdns) Get(endpoint string) (interface{}, error) {
 	var target string
 	var data interface{}
-
+	fmt.Println("PDNS.Get: endpoint: " + endpoint)
 	target = powerdns.BaseURL + endpoint
 	req, err := http.NewRequest("GET", target, nil)
 	req.Header.Add("Content-Type", "application/json")
@@ -122,6 +122,7 @@ func (powerdns *Powerdns) Delete(endpoint string) (map[string]interface{}, error
 	var data interface{}
 	var req *http.Request
 
+	fmt.Println("PDNS.Delete: endpoint: " + endpoint)
 	target = powerdns.BaseURL + endpoint
 	req, err := http.NewRequest("DELETE", target, nil)
 	req.Header.Add("Content-Type", "application/json")
@@ -156,7 +157,7 @@ func (powerdns *Powerdns) Delete(endpoint string) (map[string]interface{}, error
 func (powerdns *Powerdns) Patch(endpoint string, jsonData []byte) (err error) {
 	var target string
 	var req *http.Request
-
+	fmt.Println("PDNS.Patch: endpoint: " + endpoint + " ,jsonData:" + string(jsonData))
 	target = powerdns.BaseURL + endpoint
 	//fmt.Println("POST form " + target)
 	req, err = http.NewRequest("PATCH", target, bytes.NewBuffer(jsonData))
@@ -181,6 +182,7 @@ func (powerdns *Powerdns) Put(endpoint string, jsonData []byte) (err error) {
 	var target string
 	var req *http.Request
 
+	fmt.Println("PDNS.Put: endpoint: " + endpoint + " ,jsonData:" + string(jsonData))
 	target = powerdns.BaseURL + endpoint
 	//fmt.Println("POST form " + target)
 	req, err = http.NewRequest("PUT", target, bytes.NewBuffer(jsonData))
@@ -225,6 +227,7 @@ func (powerdns *Powerdns) UpdateRecord(domain string, dtype string, name string,
 
 	var recordSlice []interface{}
 	var rrSlice []interface{}
+	fmt.Println("PDNS.UpdateRecord: Domain: " + domain + " ,dtype:" + dtype + " ,name:" + name + " ,content:" + content + " ,ttl:" + strconv.Itoa(ttl))
 	record := Record{
 		Content:  content,
 		Disabled: false,
@@ -246,32 +249,45 @@ func (powerdns *Powerdns) UpdateRecord(domain string, dtype string, name string,
 	jsonText, err := json.Marshal(update)
 	topDomain, err := powerdns.GetTopDomain(domain)
 	if err != nil {
-		fmt.Println("Could not get topdomain, reverting to domain")
+		fmt.Println("PDNS.UpdateRecord: Could not get topdomain for " + domain + ", reverting to domain")
 		fmt.Println(err)
 		topDomain = domain
+	} else {
+		fmt.Println("PDNS.UpdateRecord: Got topdomain " + topDomain + " for domain " + domain)
 	}
 	_, err = powerdns.Get("zones/" + domain)
 	if err != nil {
-		fmt.Println("Domain not found, attempting to create it")
+		fmt.Println("PDNS.UpdateRecord: Domain " + domain + " not found, attempting to create it")
 		err := powerdns.CreateDomain(domain)
 		if err != nil {
-			fmt.Println("Failed to create domain:" + domain)
+			fmt.Println("PDNS.UpdateRecord: Failed to create domain:" + domain)
 			return err
 		}
+		// create a record in just created domain
+		err = powerdns.Patch("zones/"+domain, jsonText)
+		if err != nil {
+			fmt.Println("PDNS.UpdateRecord: Error updating record at path zones/" + domain + " ,content:" + string(jsonText))
+			fmt.Println(err)
+			return err
+		}
+		return nil
+	} else {
+		// create an record in topdomain
+		err = powerdns.Patch("zones/"+topDomain, jsonText)
+		if err != nil {
+			fmt.Println("PDNS.UpdateRecord: Error updating record at path zones/" + topDomain + " ,content:" + string(jsonText))
+			fmt.Println(err)
+			return err
+		}
+		return nil
 	}
-	err = powerdns.Patch("zones/"+topDomain, jsonText)
-	if err != nil {
-		fmt.Println("Error updating record")
-		fmt.Println(err)
-		return err
-	}
-	return nil
 }
 
 func (powerdns *Powerdns) UpdateRec(domain string, dtype string, name string, content string, ttl int) error {
 
 	var recordSlice []interface{}
 	var rrSlice []interface{}
+	fmt.Println("PDNS.UpdateRec: Domain: " + domain + " ,dtype:" + dtype + " ,name:" + name + " ,content:" + content + " ,ttl:" + strconv.Itoa(ttl))
 	record := Record{
 		Content:  content,
 		Disabled: false,
@@ -293,13 +309,13 @@ func (powerdns *Powerdns) UpdateRec(domain string, dtype string, name string, co
 	jsonText, err := json.Marshal(update)
 	topDomain, err := powerdns.GetTopDomain(domain)
 	if err != nil {
-		fmt.Println("Could not get topdomain, reverting to domain")
+		fmt.Println("PDNS.UpdateRec: Could not get topdomain, reverting to domain: " + domain)
 		fmt.Println(err)
 		topDomain = domain
 	}
 	err = powerdns.Patch("zones/"+topDomain, jsonText)
 	if err != nil {
-		fmt.Println("Error updating record")
+		fmt.Println("PDNS.UpdateRec: Error updating record at path zones/" + topDomain + " ,content:" + string(jsonText))
 		fmt.Println(err)
 		return err
 	}
@@ -307,6 +323,7 @@ func (powerdns *Powerdns) UpdateRec(domain string, dtype string, name string, co
 }
 
 func (powerdns *Powerdns) GetTopDomain(domain string) (topdomain string, err error) {
+	fmt.Println("PDNS.GetTopDomain: Domain: " + domain)
 	topSlice := strings.Split(domain, ".")
 	for i := 0; i < len(topSlice); i++ {
 		topdomain = ""
@@ -317,6 +334,7 @@ func (powerdns *Powerdns) GetTopDomain(domain string) (topdomain string, err err
 		if err == nil {
 			topDomainDataMap := topDomainData.(map[string]interface{})
 			if topDomainDataMap["soa_edit_api"] != "INCEPTION-INCREMENT" {
+				fmt.Println("PDNS.GetTopDomain: Updating soa_edit_api and soa_edit at path zones/" + topdomain)
 				update := make(map[string]string)
 				update["soa_edit_api"] = "INCEPTION-INCREMENT"
 				update["soa_edit"] = "INCEPTION-INCREMENT"
@@ -324,20 +342,21 @@ func (powerdns *Powerdns) GetTopDomain(domain string) (topdomain string, err err
 				jsonText, err := json.Marshal(update)
 				err = powerdns.Put("zones/"+topdomain, jsonText)
 				if err != nil {
-					fmt.Println("Not updated soa_edit_api")
+					fmt.Println("PDNS.GetTopDomain: Error updating soa_edit_api and soa_edit at path zones/" + topdomain + " ,content:" + string(jsonText))
 					fmt.Println(err)
 				}
 			}
 			return topdomain, err
 		}
 	}
-	return topdomain, errors.New("Did not found domain")
+	return topdomain, errors.New("PDNS.GetTopDomain: Did not found domain:" + domain + " for topdomain:" + topdomain)
 }
 
 func (powerdns *Powerdns) DeleteRecord(domain string, dtype string, name string) error {
 
 	var recordSlice []interface{}
 	var rrSlice []interface{}
+	fmt.Println("PDNS.DeleteRecord: Domain: " + domain + " ,dtype:" + dtype + " ,name:" + name)
 	record := Record{
 		Disabled: false,
 		Name:     name + "." + domain + ".",
@@ -356,13 +375,13 @@ func (powerdns *Powerdns) DeleteRecord(domain string, dtype string, name string)
 	jsonText, err := json.Marshal(update)
 	topDomain, err := powerdns.GetTopDomain(domain)
 	if err != nil {
-		fmt.Println("Could not get topdomain, reverting to domain")
+		fmt.Println("PDNS.DeleteRecord: Could not get topdomain, reverting to domain: " + domain)
 		fmt.Println(err)
 		topDomain = domain
 	}
 	err = powerdns.Patch("zones/"+topDomain, jsonText)
 	if err != nil {
-		fmt.Println("Error updating record")
+		fmt.Println("PDNS.DeleteRecord: Error updating record at path zones/" + topDomain + " ,content:" + string(jsonText))
 		fmt.Println(err)
 		return err
 	}
@@ -373,6 +392,7 @@ func (powerdns *Powerdns) DeleteRec(domain string, dtype string, name string) er
 
 	var recordSlice []interface{}
 	var rrSlice []interface{}
+	fmt.Println("PDNS.DeleteRec: Domain: " + domain + " ,dtype:" + dtype + " ,name:" + name)
 	record := Record{
 		Disabled: false,
 		Name:     name,
@@ -391,13 +411,13 @@ func (powerdns *Powerdns) DeleteRec(domain string, dtype string, name string) er
 	jsonText, err := json.Marshal(update)
 	topDomain, err := powerdns.GetTopDomain(domain)
 	if err != nil {
-		fmt.Println("Could not get topdomain, reverting to domain")
+		fmt.Println("PDNS.DeleteRec: Could not get topdomain, reverting to domain: " + domain)
 		fmt.Println(err)
 		topDomain = domain
 	}
 	err = powerdns.Patch("zones/"+topDomain, jsonText)
 	if err != nil {
-		fmt.Println("Error updating record")
+		fmt.Println("PDNS.DeleteRec: Error updating record at path zones/" + topDomain + " ,content:" + string(jsonText))
 		fmt.Println(err)
 		return err
 	}
@@ -412,6 +432,7 @@ func (powerdns *Powerdns) CreateDomain(domain string) error {
 		Masters     []string `json:"masters"`
 		Nameservers []string `json:"nameservers"`
 	}
+	fmt.Println("PDNS.CreateDomain: domain: " + domain)
 	masters := make([]string, 0)
 	var CanonicalNameServers []string
 	for _, nameserver := range powerdns.NameServers {
@@ -430,7 +451,7 @@ func (powerdns *Powerdns) CreateDomain(domain string) error {
 
 	_, err = powerdns.Post("zones", jsonText)
 	if err != nil {
-		fmt.Println("Error creating domain: " + domain)
+		fmt.Println("PDNS.CreateDomain: Error creating domain: " + domain)
 		fmt.Println(err)
 		return err
 	}
@@ -438,11 +459,11 @@ func (powerdns *Powerdns) CreateDomain(domain string) error {
 	t := time.Now()
 	timestamp := t.Format("20060102") + "01"
 	soa := CanonicalNameServers[0] + " hostmaster. " + timestamp + " 28800 7200 604800 86400"
-	err = powerdns.UpdateRec(canonicalDomain, "SOA", canonicalDomain, soa, 60)
+	err = powerdns.UpdateRec(canonicalDomain, "SOA", canonicalDomain, soa, 10)
 	if err != nil {
-		fmt.Println("Failed to update SOA record, domain: " + canonicalDomain + ", name: " + canonicalDomain + ", content: " + soa + " !")
+		fmt.Println("PDNS.CreateDomain: Failed to update SOA record, domain: " + canonicalDomain + ", name: " + canonicalDomain + ", content: " + soa + " !")
 	}
-	fmt.Println("Updated SOA record, domain: " + canonicalDomain + ", name: " + canonicalDomain + ", content: " + soa + " !")
+	fmt.Println("PDNS.CreateDomain: Updated SOA record, domain: " + canonicalDomain + ", name: " + canonicalDomain + ", content: " + soa + " !")
 
 	return nil
 }
