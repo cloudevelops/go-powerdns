@@ -433,6 +433,10 @@ func (powerdns *Powerdns) CreateDomain(domain string) error {
 		Nameservers []string `json:"nameservers"`
 	}
 	fmt.Println("PDNS.CreateDomain: domain: " + domain)
+	if (domain == "") || (domain == ".") {
+		fmt.Println("PDNS.CreateDomain: Domain in invalid format, refusing to create: " + domain)
+		return errors.New("Domain in invalid format")
+	}
 	masters := make([]string, 0)
 	var CanonicalNameServers []string
 	for _, nameserver := range powerdns.NameServers {
