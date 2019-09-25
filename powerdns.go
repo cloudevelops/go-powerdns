@@ -119,7 +119,7 @@ func (powerdns *Powerdns) Get(endpoint string) (interface{}, error) {
 
 func (powerdns *Powerdns) Delete(endpoint string) (map[string]interface{}, error) {
 	var target string
-	var data interface{}
+	//	var data interface{}
 	var req *http.Request
 
 	fmt.Println("PDNS.Delete: endpoint: " + endpoint)
@@ -138,20 +138,23 @@ func (powerdns *Powerdns) Delete(endpoint string) (map[string]interface{}, error
 	if r.StatusCode < 200 || r.StatusCode > 299 {
 		return nil, errors.New("HTTP Error " + r.Status)
 	}
-	response, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		fmt.Println("Error while reading body")
-		fmt.Println(err)
-		return nil, err
-	}
-	err = json.Unmarshal(response, &data)
-	if err != nil {
-		fmt.Println("Error while processing JSON")
-		fmt.Println(err)
-		return nil, err
-	}
-	m := data.(map[string]interface{})
-	return m, nil
+	// Propably not needed here, as delete domain doesnt return anything just http response code
+	//
+	//	response, err := ioutil.ReadAll(r.Body)
+	//if err != nil {
+	//fmt.Println("Error while reading body")
+	//fmt.Println(err)
+	//return nil, err
+	//}
+	// Propably not needed here, as delete domain doesnt return anything just http response code
+	//	err = json.Unmarshal(response, &data)
+	//	if err != nil {
+	//		fmt.Println("Error while processing JSON")
+	//		fmt.Println(err)
+	//		return nil, err
+	//	}
+	//m := data.(map[string]interface{})
+	return nil, err
 }
 
 func (powerdns *Powerdns) Patch(endpoint string, jsonData []byte) (err error) {
@@ -469,5 +472,17 @@ func (powerdns *Powerdns) CreateDomain(domain string) error {
 	}
 	fmt.Println("PDNS.CreateDomain: Updated SOA record, domain: " + canonicalDomain + ", name: " + canonicalDomain + ", content: " + soa + " !")
 
+	return nil
+}
+
+func (powerdns *Powerdns) DeleteDomain(domain string) error {
+
+	fmt.Println("PDNS.DeleteDomain: Domain: " + domain)
+	_, err := powerdns.Delete("zones/" + domain)
+	if err != nil {
+		fmt.Println("PDNS.DeleteDomain: Error deleting domain at path zones/" + domain)
+		fmt.Println(err)
+		return err
+	}
 	return nil
 }
